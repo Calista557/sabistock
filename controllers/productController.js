@@ -66,3 +66,73 @@ export const receiveStock = async (req, res) => {
     res.status(400).json({ message: err.message });
   }
 };
+
+export const getProducts = async (req, res) => {
+  try {
+    const products = await Product.find().sort({ name: 1 });
+
+    const stockTotals = await StockMovement.aggregate([
+      { $group: { _id: "$product", total: { $sum: "$quantity" } } },
+    ]);
+
+    const stockById = {};
+    stockTotals.forEach((item) => {
+      stockById[item._id.toString()] = item.total;
+    });
+
+    const result = products.map((product) => {
+      const currentStock = stockById[product._id.toString()] || 0;
+      return {
+        ...product.toObject(),
+        currentStock,
+        lowStock: currentStock <= product.minStock,
+      };
+    });
+
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+export const recordSale = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { quantity, note } = req.body;
+
+    if (!mongoose.isValidObjectId(id)) {
+      return res.status(400).json({ message: "Invalid product id" });
+    }
+
+    if (!Number.isInteger(quantity) || quantity <= 0) {
+      return res
+        .status(400)
+        .json({ message: "Sale quantity must be a positive whole number" });
+    }
+
+    const product = await Product.findById(id);
+    if (!product) {
+      return res.status(404).json({ message: "Product not found" });
+    }
+
+    const available = await getCurrentStock(product._id);
+    if (quantity > available) {
+      return res
+        .status(400)
+        .json({ message: `Not enough stock. Available: ${available}` });
+    }
+
+    await StockMovement.create({
+      product: product._id,
+      type: "sale",
+      quantity: -quantity,
+      note,
+    });
+
+    const currentStock = await getCurrentStock(product._id);
+
+    res.status(201).json({ product: product.name, currentStock });
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+};
