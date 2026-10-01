@@ -5,6 +5,7 @@ import productRoutes from "./routes/productRoutes.js";
 import stockCountRoutes from "./routes/stockCountRoutes.js";
 import employeeRoutes from "./routes/employeeRoutes.js";
 import orderRoutes from "./routes/orderRoutes.js";
+import debtRoutes from "./routes/debtRoutes.js";
 
 
 connectDB();
@@ -16,6 +17,7 @@ app.use("/api/products", productRoutes);
 app.use("/api/stock-counts", stockCountRoutes);
 app.use("/api/employees", employeeRoutes);
 app.use("/api/orders", orderRoutes);
+app.use("/api/debts", debtRoutes);
 
 const port = 3000;
 
