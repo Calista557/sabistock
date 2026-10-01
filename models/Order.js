@@ -54,6 +54,25 @@ const orderSchema = new mongoose.Schema(
       enum: ["cash", "transfer", "card", "credit"],
       required: true,
     },
+    status: {
+    type: String,
+     enum: ["completed", "voided"],
+     default: "completed",
+    },
+
+    voidedAt: {
+  type: Date,
+    },
+
+    voidedBy: {
+     type: mongoose.Schema.Types.ObjectId,
+     ref: "Employee",
+    },
+
+    voidReason: {
+     type: String,
+     trim: true,
+    },
     servedBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Employee",

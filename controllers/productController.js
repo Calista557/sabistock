@@ -2,6 +2,7 @@ import Product from "../models/Product.js";
 import StockMovement from "../models/StockMovement.js";
 import { getCurrentStock } from "../utils/stock.js";
 import mongoose from "mongoose";
+import Supplier from "../models/Supplier.js";
 
 export const createProduct = async (req, res) => {
   try {
@@ -41,7 +42,7 @@ export const createProduct = async (req, res) => {
 export const receiveStock = async (req, res) => {
   try {
     const { id } = req.params;
-    const { quantity, note } = req.body;
+    const { quantity, note, supplierId } = req.body;
 
     if (!mongoose.isValidObjectId(id)) {
       return res.status(400).json({ message: "Invalid product id" });
@@ -51,12 +52,32 @@ export const receiveStock = async (req, res) => {
     if (!product) {
       return res.status(404).json({ message: "Product not found" });
     }
+    
+if (supplierId) {
+  if (!mongoose.isValidObjectId(supplierId)) {
+    return res.status(400).json({
+      message: "Invalid supplier id",
+    });
+  }
+
+  const supplier = await Supplier.findOne({
+    _id: supplierId,
+    active: true,
+  });
+
+  if (!supplier) {
+    return res.status(404).json({
+      message: "Supplier not found",
+    });
+  }
+}
 
     await StockMovement.create({
       product: product._id,
       type: "purchase",
       quantity,
       note,
+      supplier: supplierId, 
       recordedBy: req.employee._id,
     });
 
@@ -70,7 +91,13 @@ export const receiveStock = async (req, res) => {
 
 export const getProducts = async (req, res) => {
   try {
-    const products = await Product.find().sort({ name: 1 });
+    const products = await Product.find()
+  .select(
+    req.employee.role === "cashier"
+      ? "-costPrice"
+      : "+costPrice",
+  )
+  .sort({ name: 1 });
 
     const stockTotals = await StockMovement.aggregate([
       { $group: { _id: "$product", total: { $sum: "$quantity" } } },

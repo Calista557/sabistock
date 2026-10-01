@@ -32,6 +32,10 @@ const stockMovementSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "Employee",
     },
+  supplier: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Supplier",
+},
     order: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Order",

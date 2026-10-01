@@ -1,4 +1,5 @@
 import express from "express";
+
 import {
   createProduct,
   receiveStock,
@@ -7,28 +8,27 @@ import {
   getProductMovements,
   updateProduct,
 } from "../controllers/productController.js";
-import { requireLogin } from "../middleware/auth.js";
+
+import { requireLogin, requireRole } from "../middleware/auth.js";
 
 const router = express.Router();
 
 router.use(requireLogin);
 
-router.post("/", createProduct);
+router.post("/", requireRole("owner", "manager"), createProduct);
+
 router.post("/:id/purchase", receiveStock);
+
 router.post("/:id/sale", recordSale);
-router.get("/", getProducts);
-
-router.post("/", createProduct);
-
-router.post("/:id/purchase", receiveStock);
-
-router.post("/:id/purchase", receiveStock);
 
 router.get("/", getProducts);
 
 router.get("/:id/movements", getProductMovements);
 
-router.patch("/:id", updateProduct);
+router.patch(
+  "/:id",
+  requireRole("owner", "manager"),
+  updateProduct,
+);
 
 export default router;
-

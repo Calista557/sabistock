@@ -257,3 +257,54 @@ export const addPayment = async (req, res) => {
     res.status(400).json({ message: err.message });
   }
 };
+
+export const voidOrder = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { reason } = req.body;
+
+    if (!mongoose.isValidObjectId(id)) {
+      return res.status(400).json({ message: "Invalid order id" });
+    }
+
+    if (!reason || !reason.trim()) {
+      return res.status(400).json({
+        message: "A reason is required when voiding an order",
+      });
+    }
+
+    const order = await Order.findById(id);
+
+    if (!order) {
+      return res.status(404).json({ message: "Order not found" });
+    }
+
+    if (order.status === "voided") {
+      return res.status(400).json({
+        message: "Order is already voided",
+      });
+    }
+
+       await StockMovement.insertMany(
+      order.items.map((item) => ({
+        product: item.product,
+        type: "adjustment",
+        quantity: item.quantity,
+        note: `Void order ${order._id}: ${reason.trim()}`,
+        recordedBy: req.employee._id,
+        order: order._id,
+      })),
+    );
+
+    order.status = "voided";
+    order.voidedAt = new Date();
+    order.voidedBy = req.employee._id;
+    order.voidReason = reason.trim();
+
+    await order.save();
+
+    res.json(order);
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+};  

@@ -2,8 +2,9 @@ import Order from "../models/Order.js";
 
 export const getDebts = async (req, res) => {
   try {
-   const orders = await Order.find({
+  const orders = await Order.find({
   paymentMethod: "credit",
+  status: "completed",
   $expr: {
     $lt: ["$amountPaid", "$total"],
   },
