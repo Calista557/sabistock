@@ -34,3 +34,17 @@ export const requireRole =
     }
     next();
   };
+
+  export const allowFirstSetup = async (req, res, next) => {
+  try {
+    const total = await Employee.countDocuments();
+
+    if (total === 0) {
+      return next();
+    }
+
+    requireLogin(req, res, () => requireRole("owner")(req, res, next));
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};

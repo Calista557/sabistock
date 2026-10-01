@@ -4,10 +4,11 @@ import {
   getEmployees,
   login,
 } from "../controllers/employeeController.js";
+import { allowFirstSetup } from "../middleware/auth.js";
 
 const router = express.Router();
 
-router.post("/", createEmployee);
+router.post("/", allowFirstSetup, createEmployee);
 router.get("/", getEmployees);
 router.post("/login", login);
 

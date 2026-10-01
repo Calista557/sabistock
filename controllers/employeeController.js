@@ -5,7 +5,9 @@ import Employee from "../models/Employee.js";
 
 export const createEmployee = async (req, res) => {
   try {
-    const { name, role, pin } = req.body;
+    const { name, pin } = req.body;
+    const isFirst = (await Employee.countDocuments()) === 0;
+    const role = isFirst ? "owner" : req.body.role;
 
     if (!/^\d{4,6}$/.test(String(pin))) {
       return res
