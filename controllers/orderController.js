@@ -87,6 +87,7 @@ export const createOrder = async (req, res) => {
         name: product.name,
         quantity,
         unitPrice: product.sellingPrice,
+        costPrice: product.costPrice,
         lineTotal: quantity * product.sellingPrice,
       };
     });
