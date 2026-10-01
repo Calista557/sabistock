@@ -77,3 +77,43 @@ export const login = async (req, res) => {
     res.status(500).json({ message: err.message });
   }
 };
+
+export const setEmployeeActive = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { active } = req.body;
+
+    if (!mongoose.isValidObjectId(id)) {
+      return res.status(400).json({ message: "Invalid employee id" });
+    }
+
+    if (typeof active !== "boolean") {
+      return res.status(400).json({ message: "active must be true or false" });
+    }
+
+    if (id === req.employee._id.toString() && active === false) {
+      return res
+        .status(400)
+        .json({ message: "You cannot deactivate your own account" });
+    }
+
+    const employee = await Employee.findByIdAndUpdate(
+      id,
+      { active },
+      { new: true },
+    );
+
+    if (!employee) {
+      return res.status(404).json({ message: "Employee not found" });
+    }
+
+    res.json({
+      _id: employee._id,
+      name: employee.name,
+      role: employee.role,
+      active: employee.active,
+    });
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+}; 

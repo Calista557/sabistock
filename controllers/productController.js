@@ -57,6 +57,7 @@ export const receiveStock = async (req, res) => {
       type: "purchase",
       quantity,
       note,
+      recordedBy: req.employee._id,
     });
 
     const currentStock = await getCurrentStock(product._id);
@@ -122,11 +123,14 @@ export const recordSale = async (req, res) => {
         .json({ message: `Not enough stock. Available: ${available}` });
     }
 
+  
+
     await StockMovement.create({
       product: product._id,
       type: "sale",
       quantity: -quantity,
       note,
+      recordedBy: req.employee._id,
     });
 
     const currentStock = await getCurrentStock(product._id);
