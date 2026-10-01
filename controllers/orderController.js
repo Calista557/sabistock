@@ -5,7 +5,7 @@ import Order from "../models/Order.js";
 
 export const createOrder = async (req, res) => {
   try {
-    const { items, paymentMethod, clientId } = req.body;
+    const { items, paymentMethod, clientId, amountPaid, customerName, customerPhone, dueDate } = req.body;
 
     if (clientId) {
       const existing = await Order.findOne({ clientId });
@@ -18,7 +18,7 @@ export const createOrder = async (req, res) => {
       return res.status(400).json({ message: "An order needs at least one item" });
     }
 
-    if (!["cash", "transfer", "card"].includes(paymentMethod)) {
+       if (!["cash", "transfer", "card", "credit"].includes(paymentMethod)) {
       return res.status(400).json({ message: "Invalid payment method" });
     }
 
@@ -80,11 +80,65 @@ export const createOrder = async (req, res) => {
 
     const total = orderItems.reduce((sum, item) => sum + item.lineTotal, 0);
 
-    const order = await Order.create({
+    const paid =
+      amountPaid === undefined
+        ? paymentMethod === "credit"
+          ? 0
+          : total
+        : amountPaid;
+
+    if (!Number.isInteger(paid) || paid < 0 || paid > total) {
+      return res.status(400).json({
+        message: "Amount paid must be a whole number from 0 up to the order total",
+      });
+    }
+
+    if (paymentMethod === "credit" && paid !== 0) {
+      return res
+        .status(400)
+        .json({ message: "A credit sale has nothing paid at the till" });
+    }
+
+    if (paymentMethod !== "credit" && paid === 0) {
+      return res
+        .status(400)
+        .json({ message: "Use credit when nothing is paid" });
+    }
+
+    let due;
+    if (paid < total) {
+      if (!customerName || !customerName.trim()) {
+        return res.status(400).json({
+          message: "Customer name is required when the order is not fully paid",
+        });
+      }
+      due = new Date(dueDate);
+      if (!dueDate || Number.isNaN(due.getTime())) {
+        return res.status(400).json({
+          message: "A valid due date is required when the order is not fully paid",
+        });
+      }
+    }
+
+     const order = await Order.create({
       items: orderItems,
       total,
       paymentMethod,
       servedBy: req.employee._id,
+      amountPaid: paid,
+      customerName,
+      customerPhone,
+      dueDate: due,
+      payments:
+        paid > 0
+          ? [
+              {
+                amount: paid,
+                method: paymentMethod,
+                receivedBy: req.employee._id,
+              },
+            ]
+          : [],
       clientId,
     });
 
@@ -126,5 +180,65 @@ export const getOrder = async (req, res) => {
     res.json(order);
   } catch (err) {
     res.status(500).json({ message: err.message });
+  }
+};
+
+export const addPayment = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { amount, method } = req.body;
+
+    if (!mongoose.isValidObjectId(id)) {
+      return res.status(400).json({ message: "Invalid order id" });
+    }
+
+    if (!Number.isInteger(amount) || amount <= 0) {
+      return res
+        .status(400)
+        .json({ message: "Amount must be a positive whole number" });
+    }
+
+    if (!["cash", "transfer", "card"].includes(method)) {
+      return res.status(400).json({ message: "Invalid payment method" });
+    }
+
+    const order = await Order.findOneAndUpdate(
+      {
+        _id: id,
+        $expr: {
+          $lte: [
+            { $add: [{ $ifNull: ["$amountPaid", "$total"] }, amount] },
+            "$total",
+          ],
+        },
+      },
+      {
+        $inc: { amountPaid: amount },
+        $push: {
+          payments: {
+            amount,
+            method,
+            receivedBy: req.employee._id,
+            paidAt: new Date(),
+          },
+        },
+      },
+      { new: true },
+    );
+
+    if (!order) {
+      const exists = await Order.findById(id);
+      if (!exists) {
+        return res.status(404).json({ message: "Order not found" });
+      }
+      return res.status(400).json({
+        message:
+          "Amount is more than the balance owed, or the order is already fully paid",
+      });
+    }
+
+    res.json({ ...order.toObject(), balance: order.total - order.amountPaid });
+  } catch (err) {
+    res.status(400).json({ message: err.message });
   }
 };

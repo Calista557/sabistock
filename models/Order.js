@@ -46,7 +46,7 @@ const orderSchema = new mongoose.Schema(
     },
     paymentMethod: {
       type: String,
-      enum: ["cash", "transfer", "card"],
+      enum: ["cash", "transfer", "card", "credit"],
       required: true,
     },
     servedBy: {
@@ -54,6 +54,38 @@ const orderSchema = new mongoose.Schema(
       ref: "Employee",
       required: true,
     },
+    amountPaid: {
+      type: Number,
+      required: true,
+      min: 0,
+    },
+    customerName: {
+      type: String,
+      trim: true,
+    },
+    customerPhone: {
+      type: String,
+      trim: true,
+    },
+    dueDate: {
+      type: Date,
+    },
+    payments: [
+      {
+        amount: { type: Number, required: true, min: 1 },
+        method: {
+          type: String,
+          enum: ["cash", "transfer", "card", "credit"],
+          required: true,
+        },
+        receivedBy: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "Employee",
+          required: true,
+        },
+    paidAt: { type: Date, default: Date.now },
+      },
+    ],
     clientId: {
       type: String,
       unique: true,
