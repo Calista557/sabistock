@@ -4,7 +4,7 @@ import connectDB from "./config/db.js";
 import productRoutes from "./routes/productRoutes.js";
 import stockCountRoutes from "./routes/stockCountRoutes.js";
 import employeeRoutes from "./routes/employeeRoutes.js";
-
+import orderRoutes from "./routes/orderRoutes.js";
 
 
 connectDB();
@@ -15,6 +15,7 @@ app.use(express.json());
 app.use("/api/products", productRoutes);
 app.use("/api/stock-counts", stockCountRoutes);
 app.use("/api/employees", employeeRoutes);
+app.use("/api/orders", orderRoutes);
 
 const port = 3000;
 
