@@ -59,6 +59,10 @@ const orderSchema = new mongoose.Schema(
       required: true,
       min: 0,
     },
+    customer: {
+     type: mongoose.Schema.Types.ObjectId,
+    ref: "Customer",
+    },
     customerName: {
       type: String,
       trim: true,

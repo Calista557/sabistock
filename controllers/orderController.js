@@ -2,10 +2,11 @@ import mongoose from "mongoose";
 import Product from "../models/Product.js";
 import StockMovement from "../models/StockMovement.js";
 import Order from "../models/Order.js";
+import Customer from "../models/Customer.js";
 
 export const createOrder = async (req, res) => {
   try {
-    const { items, paymentMethod, clientId, amountPaid, customerName, customerPhone, dueDate } = req.body;
+    const { items, paymentMethod, clientId, amountPaid, customerId, customerName, customerPhone, dueDate } = req.body;
 
     if (clientId) {
       const existing = await Order.findOne({ clientId });
@@ -13,6 +14,18 @@ export const createOrder = async (req, res) => {
         return res.status(200).json(existing);
       }
     }
+
+    if (customerId) {
+     if (!mongoose.isValidObjectId(customerId)) {
+     return res.status(400).json({ message: "Invalid customer id" });
+     }
+
+  const customer = await Customer.findById(customerId);
+
+     if (!customer) {
+     return res.status(404).json({ message: "Customer not found" });
+    }
+}
 
     if (!Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ message: "An order needs at least one item" });
@@ -126,6 +139,7 @@ export const createOrder = async (req, res) => {
       paymentMethod,
       servedBy: req.employee._id,
       amountPaid: paid,
+      customer: customerId,
       customerName,
       customerPhone,
       dueDate: due,
@@ -172,7 +186,7 @@ export const getOrder = async (req, res) => {
       return res.status(400).json({ message: "Invalid order id" });
     }
 
-    const order = await Order.findById(id).populate("servedBy", "name role");
+    const order = await Order.findById(id).populate("servedBy", "name role").populate("customer", "name phone email address");;
     if (!order) {
       return res.status(404).json({ message: "Order not found" });
     }
