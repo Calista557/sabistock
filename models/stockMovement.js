@@ -24,6 +24,14 @@ const stockMovementSchema = new mongoose.Schema(
       type: String,
       trim: true,
     },
+    stockCount: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "StockCount",
+    },
+    recordedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Employee",
+    },
   },
   { timestamps: true },
 );

@@ -136,3 +136,67 @@ export const recordSale = async (req, res) => {
     res.status(400).json({ message: err.message });
   }
 };
+
+export const getProductMovements = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!mongoose.isValidObjectId(id)) {
+      return res.status(400).json({ message: "Invalid product id" });
+    }
+
+    const product = await Product.findById(id);
+    if (!product) {
+      return res.status(404).json({ message: "Product not found" });
+    }
+
+    const movements = await StockMovement.find({ product: product._id }).sort({
+      createdAt: -1,
+    });
+
+    const currentStock = await getCurrentStock(product._id);
+
+    res.json({ product: product.name, currentStock, movements });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+export const updateProduct = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!mongoose.isValidObjectId(id)) {
+      return res.status(400).json({ message: "Invalid product id" });
+    }
+
+    const allowedFields = [
+      "name",
+      "barcode",
+      "costPrice",
+      "sellingPrice",
+      "minStock",
+    ];
+
+    const updates = {};
+    allowedFields.forEach((field) => {
+      if (req.body[field] !== undefined) {
+        updates[field] = req.body[field];
+      }
+    });
+
+    const product = await Product.findByIdAndUpdate(id, updates, {
+      new: true,
+      runValidators: true,
+    });
+
+    if (!product) {
+      return res.status(404).json({ message: "Product not found" });
+    }
+
+    res.json(product);
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+};
+
