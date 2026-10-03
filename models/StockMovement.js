@@ -40,6 +40,10 @@ const stockMovementSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "Order",
     },
+    batch: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Batch",
+    },
   },
   { timestamps: true },
 );

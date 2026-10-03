@@ -21,6 +21,10 @@ const productSchema = new mongoose.Schema(
       required: true,
       min: 0,
     },
+    tracksExpiry: {
+      type: Boolean,
+      default: false,
+    },
     minStock: {
       type: Number,
       default: 0,

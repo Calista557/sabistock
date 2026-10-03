@@ -3,6 +3,7 @@ import StockMovement from "../models/StockMovement.js";
 import { getCurrentStock } from "../utils/stock.js";
 import mongoose from "mongoose";
 import Supplier from "../models/Supplier.js";
+import Batch from "../models/Batch.js";
 
 export const createProduct = async (req, res) => {
   try {
@@ -14,6 +15,7 @@ export const createProduct = async (req, res) => {
       barcode,
       costPrice,
       sellingPrice,
+      tracksExpiry,
       minStock,
     });
 
@@ -42,48 +44,90 @@ export const createProduct = async (req, res) => {
 export const receiveStock = async (req, res) => {
   try {
     const { id } = req.params;
-    const { quantity, note, supplierId } = req.body;
+    const { quantity, note, supplierId, expiryDate, batchCode } = req.body;
 
     if (!mongoose.isValidObjectId(id)) {
       return res.status(400).json({ message: "Invalid product id" });
+    }
+
+    if (!Number.isInteger(quantity) || quantity <= 0) {
+      return res
+        .status(400)
+        .json({ message: "Quantity must be a positive whole number" });
     }
 
     const product = await Product.findById(id);
     if (!product) {
       return res.status(404).json({ message: "Product not found" });
     }
-    
-if (supplierId) {
-  if (!mongoose.isValidObjectId(supplierId)) {
-    return res.status(400).json({
-      message: "Invalid supplier id",
-    });
-  }
 
-  const supplier = await Supplier.findOne({
-    _id: supplierId,
-    active: true,
-  });
+    if (supplierId) {
+      if (!mongoose.isValidObjectId(supplierId)) {
+        return res.status(400).json({ message: "Invalid supplier id" });
+      }
 
-  if (!supplier) {
-    return res.status(404).json({
-      message: "Supplier not found",
-    });
-  }
-}
+      const supplier = await Supplier.findOne({
+        _id: supplierId,
+        active: true,
+      });
 
-    await StockMovement.create({
-      product: product._id,
-      type: "purchase",
-      quantity,
-      note,
-      supplier: supplierId, 
-      recordedBy: req.employee._id,
-    });
+      if (!supplier) {
+        return res.status(404).json({ message: "Supplier not found" });
+      }
+    }
+
+    let expiry;
+    if (product.tracksExpiry) {
+      if (!expiryDate) {
+        return res.status(400).json({
+          message: `${product.name} tracks expiry, so an expiry date is required`,
+        });
+      }
+
+      expiry = new Date(expiryDate);
+
+      if (Number.isNaN(expiry.getTime())) {
+        return res.status(400).json({ message: "Invalid expiry date" });
+      }
+
+      if (expiry <= new Date()) {
+        return res
+          .status(400)
+          .json({ message: "Expiry date must be in the future" });
+      }
+    } else if (expiryDate || batchCode) {
+      return res.status(400).json({
+        message: `${product.name} does not track expiry. Turn on tracksExpiry first.`,
+      });
+    }
+
+    let batch;
+    if (expiry) {
+      batch = await Batch.create({
+        product: product._id,
+        expiryDate: expiry,
+        batchCode,
+      });
+    }
+
+    try {
+      await StockMovement.create({
+        product: product._id,
+        type: "purchase",
+        quantity,
+        note,
+        supplier: supplierId,
+        recordedBy: req.employee._id,
+        batch: batch ? batch._id : undefined,
+      });
+    } catch (err) {
+      if (batch) await Batch.findByIdAndDelete(batch._id);
+      throw err;
+    }
 
     const currentStock = await getCurrentStock(product._id);
 
-    res.status(201).json({ product: product.name, currentStock });
+    res.status(201).json({ product: product.name, currentStock, batch });
   } catch (err) {
     res.status(400).json({ message: err.message });
   }
@@ -206,6 +250,7 @@ export const updateProduct = async (req, res) => {
       "barcode",
       "costPrice",
       "sellingPrice",
+      "tracksExpiry",
       "minStock",
     ];
 
