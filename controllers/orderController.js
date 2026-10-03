@@ -330,3 +330,293 @@ export const voidOrder = async (req, res) => {
     res.status(400).json({ message: err.message });
   }
 };
+
+export const getOrders = async (req, res) => {
+  try {
+    const orders = await Order.find()
+      .populate("servedBy", "name role")
+      .populate("customer", "name phone email address")
+      .sort({ createdAt: -1 });
+
+    res.json(
+      orders.map((order) =>
+        hideCostFor(order, req.employee.role),
+      ),
+    );
+  } catch (err) {
+    res.status(500).json({
+      message: err.message,
+    });
+  }
+};
+
+export const getDailySalesSummary = async (req, res) => {
+  try {
+    const { date } = req.query;
+
+    if (!date) {
+      return res.status(400).json({
+        message: "Date is required in YYYY-MM-DD format",
+      });
+    }
+
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
+
+    if (!match) {
+      return res.status(400).json({
+        message: "Invalid date. Use YYYY-MM-DD format",
+      });
+    }
+
+    const year = Number(match[1]);
+    const month = Number(match[2]);
+    const day = Number(match[3]);
+
+    // Validate that the date actually exists.
+    const check = new Date(Date.UTC(year, month - 1, day));
+
+    if (
+      check.getUTCFullYear() !== year ||
+      check.getUTCMonth() !== month - 1 ||
+      check.getUTCDate() !== day
+    ) {
+      return res.status(400).json({
+        message: "Invalid date",
+      });
+    }
+
+    // Nigeria is UTC+1.
+    // Local midnight in Nigeria = 23:00 UTC on the previous day.
+    const start = new Date(
+      Date.UTC(year, month - 1, day, -1, 0, 0, 0),
+    );
+
+    const end = new Date(
+      Date.UTC(year, month - 1, day + 1, -1, 0, 0, 0),
+    );
+
+    // -------------------------
+    // 1. SALES
+    // -------------------------
+
+    const salesResult = await Order.aggregate([
+      {
+        $match: {
+          status: "completed",
+          createdAt: {
+            $gte: start,
+            $lt: end,
+          },
+        },
+      },
+      {
+        $group: {
+          _id: null,
+          totalSales: { $sum: "$total" },
+          numberOfSales: { $sum: 1 },
+        },
+      },
+    ]);
+
+    const sales = salesResult[0] || {
+      totalSales: 0,
+      numberOfSales: 0,
+    };
+
+    // -------------------------
+    // 2. COLLECTIONS
+    // -------------------------
+    // Collections are based on when money was actually received,
+    // not when the order was created.
+
+    const collectionsResult = await Order.aggregate([
+    {
+     $match: {
+      status: "completed",
+      "payments.paidAt": {
+      $gte: start,
+      $lt: end,
+    },
+   },
+  },
+      {
+        $unwind: "$payments",
+      },
+      {
+        $match: {
+          "payments.paidAt": {
+            $gte: start,
+            $lt: end,
+          },
+        },
+      },
+      {
+        $group: {
+          _id: "$payments.method",
+          total: { $sum: "$payments.amount" },
+        },
+      },
+    ]);
+
+    const collections = {
+      cash: 0,
+      transfer: 0,
+      card: 0,
+    };
+
+    for (const item of collectionsResult) {
+      if (item._id in collections) {
+        collections[item._id] = item.total;
+      }
+    }
+
+    const totalCollections =
+      collections.cash +
+      collections.transfer +
+      collections.card;
+
+    // -------------------------
+    // 3. RESPONSE
+    // -------------------------
+
+    res.json({
+      date,
+      sales: {
+        total: sales.totalSales,
+        numberOfSales: sales.numberOfSales,
+      },
+      collections: {
+        total: totalCollections,
+        cash: collections.cash,
+        transfer: collections.transfer,
+        card: collections.card,
+      },
+    });
+  } catch (err) {
+    res.status(500).json({
+      message: err.message,
+    });
+  }
+};
+
+
+export const getProfitReport = async (req, res) => {
+  try {
+    const { from, to } = req.query;
+
+    if (!from || !to) {
+      return res.status(400).json({
+        message: "Both from and to dates are required in YYYY-MM-DD format",
+      });
+    }
+
+    const fromMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(from);
+    const toMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(to);
+
+    if (!fromMatch || !toMatch) {
+      return res.status(400).json({
+        message: "Invalid date. Use YYYY-MM-DD format",
+      });
+    }
+
+    const fromYear = Number(fromMatch[1]);
+    const fromMonth = Number(fromMatch[2]);
+    const fromDay = Number(fromMatch[3]);
+
+    const toYear = Number(toMatch[1]);
+    const toMonth = Number(toMatch[2]);
+    const toDay = Number(toMatch[3]);
+
+    const fromCheck = new Date(
+      Date.UTC(fromYear, fromMonth - 1, fromDay),
+    );
+
+    const toCheck = new Date(
+      Date.UTC(toYear, toMonth - 1, toDay),
+    );
+
+    if (
+      fromCheck.getUTCFullYear() !== fromYear ||
+      fromCheck.getUTCMonth() !== fromMonth - 1 ||
+      fromCheck.getUTCDate() !== fromDay ||
+      toCheck.getUTCFullYear() !== toYear ||
+      toCheck.getUTCMonth() !== toMonth - 1 ||
+      toCheck.getUTCDate() !== toDay
+    ) {
+      return res.status(400).json({
+        message: "Invalid date",
+      });
+    }
+
+    if (from > to) {
+      return res.status(400).json({
+        message: "The from date cannot be after the to date",
+      });
+    }
+
+    // Nigeria is UTC+1.
+    const start = new Date(
+      Date.UTC(fromYear, fromMonth - 1, fromDay, -1, 0, 0, 0),
+    );
+
+    const end = new Date(
+      Date.UTC(toYear, toMonth - 1, toDay + 1, -1, 0, 0, 0),
+    );
+
+    const result = await Order.aggregate([
+      {
+        $match: {
+          status: "completed",
+          createdAt: {
+            $gte: start,
+            $lt: end,
+          },
+        },
+      },
+      {
+        $unwind: "$items",
+      },
+      {
+        $group: {
+          _id: null,
+          sales: {
+            $sum: "$items.lineTotal",
+          },
+          cost: {
+            $sum: {
+              $multiply: [
+                "$items.costPrice",
+                "$items.quantity",
+              ],
+            },
+          },
+          numberOfSales: {
+            $addToSet: "$_id",
+          },
+        },
+      },
+    ]);
+
+    const report = result[0] || {
+      sales: 0,
+      cost: 0,
+      numberOfSales: [],
+    };
+
+    const grossProfit = report.sales - report.cost;
+
+    res.json({
+      from,
+      to,
+      sales: report.sales,
+      cost: report.cost,
+      grossProfit,
+      numberOfSales: report.numberOfSales.length,
+    });
+  } catch (err) {
+    res.status(500).json({
+      message: err.message,
+    });
+  }
+};
+
