@@ -9,11 +9,12 @@ import debtRoutes from "./routes/debtRoutes.js";
 import customerRoutes from "./routes/customerRoutes.js";
 import customerDebtRoutes from "./routes/customerDebtRoutes.js";
 import supplierRoutes from "./routes/supplierRoutes.js";
-
+import batchRoutes from './routes/batchRoutes.js';
 
 connectDB();
 
 const app = express();
+
 
 app.use(express.json());
 app.use("/api/products", productRoutes);
@@ -24,6 +25,7 @@ app.use("/api/debts", debtRoutes);
 app.use("/api/customers", customerRoutes);
 app.use("/api/customer-debts", customerDebtRoutes);
 app.use("/api/suppliers", supplierRoutes);
+app.use("/api/batches", batchRoutes);
 
 const port = 3000;
 

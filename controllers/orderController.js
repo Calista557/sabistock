@@ -3,6 +3,7 @@ import Product from "../models/Product.js";
 import StockMovement from "../models/StockMovement.js";
 import Order from "../models/Order.js";
 import Customer from "../models/Customer.js";
+import { allocateStock } from "../utils/allocateStock.js";
 
 export const createOrder = async (req, res) => {
   try {
@@ -16,22 +17,22 @@ export const createOrder = async (req, res) => {
     }
 
     if (customerId) {
-     if (!mongoose.isValidObjectId(customerId)) {
-     return res.status(400).json({ message: "Invalid customer id" });
-     }
+      if (!mongoose.isValidObjectId(customerId)) {
+        return res.status(400).json({ message: "Invalid customer id" });
+      }
 
-  const customer = await Customer.findById(customerId);
+      const customer = await Customer.findById(customerId);
 
-     if (!customer) {
-     return res.status(404).json({ message: "Customer not found" });
+      if (!customer) {
+        return res.status(404).json({ message: "Customer not found" });
+      }
     }
-}
 
     if (!Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ message: "An order needs at least one item" });
     }
 
-       if (!["cash", "transfer", "card", "credit"].includes(paymentMethod)) {
+    if (!["cash", "transfer", "card", "credit"].includes(paymentMethod)) {
       return res.status(400).json({ message: "Invalid payment method" });
     }
 
@@ -59,25 +60,17 @@ export const createOrder = async (req, res) => {
       return res.status(404).json({ message: "One or more products not found" });
     }
 
-    const totals = await StockMovement.aggregate([
-      { $match: { product: { $in: productIds } } },
-      { $group: { _id: "$product", total: { $sum: "$quantity" } } },
-    ]);
-
-    const stockById = {};
-    totals.forEach((t) => {
-      stockById[t._id.toString()] = t.total;
-    });
-
-    // Check all stock before saving anything
+    // Decide where each product's stock comes from. Check everything before saving anything.
+    const allocationsByProduct = new Map();
     for (const product of products) {
-      const available = stockById[product._id.toString()] || 0;
       const qty = wanted.get(product._id.toString());
-      if (qty > available) {
+      const { allocations, shortBy } = await allocateStock(product._id, qty);
+      if (shortBy > 0) {
         return res.status(400).json({
-          message: `Not enough stock for ${product.name}. Available: ${available}`,
+          message: `Not enough stock for ${product.name}. Available: ${qty - shortBy}`,
         });
       }
+      allocationsByProduct.set(product._id.toString(), allocations);
     }
 
     const orderItems = products.map((product) => {
@@ -134,7 +127,7 @@ export const createOrder = async (req, res) => {
       }
     }
 
-     const order = await Order.create({
+    const order = await Order.create({
       items: orderItems,
       total,
       paymentMethod,
@@ -158,16 +151,18 @@ export const createOrder = async (req, res) => {
     });
 
     try {
-      await StockMovement.insertMany(
-        orderItems.map((item) => ({
+      const saleMovements = orderItems.flatMap((item) =>
+        allocationsByProduct.get(item.product.toString()).map((a) => ({
           product: item.product,
           type: "sale",
-          quantity: -item.quantity,
+          quantity: -a.quantity,
+          batch: a.batch || undefined,
           note: `Order ${order._id}`,
           recordedBy: req.employee._id,
           order: order._id,
         })),
       );
+      await StockMovement.insertMany(saleMovements);
     } catch (err) {
       await Order.findByIdAndDelete(order._id);
       throw err;
@@ -187,7 +182,9 @@ export const getOrder = async (req, res) => {
       return res.status(400).json({ message: "Invalid order id" });
     }
 
-    const order = await Order.findById(id).populate("servedBy", "name role").populate("customer", "name phone email address");;
+    const order = await Order.findById(id)
+      .populate("servedBy", "name role")
+      .populate("customer", "name phone email address");
     if (!order) {
       return res.status(404).json({ message: "Order not found" });
     }
@@ -285,11 +282,24 @@ export const voidOrder = async (req, res) => {
       });
     }
 
-       await StockMovement.insertMany(
-      order.items.map((item) => ({
-        product: item.product,
+    // Reverse the order's own sale movements, keeping the same product and batch
+    const saleMovements = await StockMovement.find({
+      order: order._id,
+      type: "sale",
+    });
+
+    if (saleMovements.length === 0) {
+      return res.status(400).json({
+        message: "No sale movements found for this order, so it cannot be voided safely",
+      });
+    }
+
+    await StockMovement.insertMany(
+      saleMovements.map((m) => ({
+        product: m.product,
         type: "adjustment",
-        quantity: item.quantity,
+        quantity: -m.quantity,
+        batch: m.batch || undefined,
         note: `Void order ${order._id}: ${reason.trim()}`,
         recordedBy: req.employee._id,
         order: order._id,
@@ -307,4 +317,4 @@ export const voidOrder = async (req, res) => {
   } catch (err) {
     res.status(400).json({ message: err.message });
   }
-};  
+};
