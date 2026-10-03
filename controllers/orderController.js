@@ -5,6 +5,15 @@ import Order from "../models/Order.js";
 import Customer from "../models/Customer.js";
 import { allocateStock } from "../utils/allocateStock.js";
 
+// Cost price is only for owners and managers. Everyone else gets items without it.
+const hideCostFor = (order, role) => {
+  const obj = typeof order.toObject === "function" ? order.toObject() : order;
+  if (role !== "owner" && role !== "manager") {
+    obj.items = obj.items.map(({ costPrice, ...rest }) => rest);
+  }
+  return obj;
+};
+
 export const createOrder = async (req, res) => {
   try {
     const { items, paymentMethod, clientId, amountPaid, customerId, customerName, customerPhone, dueDate } = req.body;
@@ -12,7 +21,7 @@ export const createOrder = async (req, res) => {
     if (clientId) {
       const existing = await Order.findOne({ clientId });
       if (existing) {
-        return res.status(200).json(existing);
+        return res.status(200).json(hideCostFor(existing, req.employee.role));
       }
     }
 
@@ -168,7 +177,7 @@ export const createOrder = async (req, res) => {
       throw err;
     }
 
-    res.status(201).json(order);
+    res.status(201).json(hideCostFor(order, req.employee.role));
   } catch (err) {
     res.status(400).json({ message: err.message });
   }
@@ -189,7 +198,7 @@ export const getOrder = async (req, res) => {
       return res.status(404).json({ message: "Order not found" });
     }
 
-    res.json(order);
+    res.json(hideCostFor(order, req.employee.role));
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -249,7 +258,10 @@ export const addPayment = async (req, res) => {
       });
     }
 
-    res.json({ ...order.toObject(), balance: order.total - order.amountPaid });
+    res.json({
+      ...hideCostFor(order, req.employee.role),
+      balance: order.total - order.amountPaid,
+    });
   } catch (err) {
     res.status(400).json({ message: err.message });
   }
@@ -313,7 +325,7 @@ export const voidOrder = async (req, res) => {
 
     await order.save();
 
-    res.json(order);
+    res.json(hideCostFor(order, req.employee.role));
   } catch (err) {
     res.status(400).json({ message: err.message });
   }
